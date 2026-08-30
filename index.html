@@ -3,7 +3,113 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SIMAK Terpadu MIN 4 Lampung Timur</title>
-<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.tailwindcss.com">
+/* ===== PERBAIKAN TOTAL V4 ===== */
+function logMutation(category,name,detail){
+  const m={id:'M'+Date.now()+Math.random(),date:new Date().toISOString(),category,name,detail:detail||''};
+  state.mutations.unshift(m); save(); postOnline('saveMutation',m); return m;
+}
+function showStudentTab(x){
+  document.getElementById('student-kasus').classList.toggle('hidden',x!=='kasus');
+  document.getElementById('student-prestasi').classList.toggle('hidden',x!=='prestasi');
+  document.querySelectorAll('#page-siswa .tab').forEach(b=>b.classList.toggle('active',b.textContent.toLowerCase().includes(x)));
+}
+function studentForm(id){
+  let s=state.students.find(x=>x.id===id)||{};
+  const lama=JSON.stringify(s);
+  let nama=prompt('Nama siswa',s.nama||''); if(!nama)return;
+  let nis=prompt('NIS',s.nis||''); if(nis===null)return;
+  let nisn=prompt('NISN',s.nisn||''); if(nisn===null)return;
+  let kelas=prompt('Kelas',s.kelas||''); if(kelas===null)return;
+  let wali=prompt('Wali kelas',s.waliKelas||''); if(wali===null)return;
+  let obj;
+  if(id){ Object.assign(s,{nama,nis,nisn,kelas,waliKelas:wali}); obj=s; logMutation('Siswa Diedit',nama,'Data siswa diperbarui'); }
+  else { obj={id:'S'+Date.now(),nama,nis,nisn,kelas,waliKelas:wali}; state.students.push(obj); logMutation('Siswa Ditambahkan',nama,'Ditambahkan melalui aplikasi'); }
+  save(); postOnline('upsertStudent',obj); renderAll();
+}
+function delStudent(id){
+  const s=state.students.find(x=>x.id===id); if(!s)return;
+  if(confirm('Hapus siswa '+s.nama+'?')){ state.students=state.students.filter(x=>x.id!==id); logMutation('Siswa Dikeluarkan',s.nama,'Dihapus dari database'); save(); postOnline('deleteStudent',{id,nama:s.nama}); renderAll(); }
+}
+function teacherForm(id){
+  let t=state.teachers.find(x=>x.id===id)||{};
+  let nama=prompt('Nama',t.nama||'');if(!nama)return;
+  let status=prompt('Status: PNS / PPPK / PPPK Paruh Waktu / Honorer',t.status||'Honorer');if(status===null)return;
+  let tugas=prompt('Tugas',t.tugas||'Guru');if(tugas===null)return;
+  let certified=confirm('Guru bersertifikasi? OK=Ya, Cancel=Tidak');
+  let obj;
+  if(id){Object.assign(t,{nama,status,tugas,certified});obj=t;logMutation('Guru Diedit',nama,'Data guru diperbarui');}
+  else {obj={id:'G'+Date.now(),nama,status,tugas,certified};state.teachers.push(obj);logMutation('Guru Ditambahkan',nama,'Ditambahkan melalui aplikasi');}
+  save(); postOnline('upsertTeacher',obj); renderAll();
+}
+function delTeacher(id){
+  const t=state.teachers.find(x=>x.id===id);if(!t)return;
+  if(confirm('Hapus guru '+t.nama+'?')){state.teachers=state.teachers.filter(x=>x.id!==id);logMutation('Guru Dikeluarkan',t.nama,'Dihapus dari database');save();postOnline('deleteTeacher',{id,nama:t.nama});renderAll();}
+}
+function saveAchievement(e){
+  e.preventDefault();
+  let s=getStudent(document.getElementById('achStudent').value,document.getElementById('achClass').value);
+  if(!s)return alert('Pilih nama siswa dari daftar yang sesuai dengan kelas.');
+  let rank=document.getElementById('achRank').value;
+  let pointMap={'Juara 1':30,'Juara 2':20,'Juara 3':15,'Harapan':10,'Peserta Berprestasi':5};
+  let data={id:'A'+Date.now(),date:new Date().toISOString(),studentId:s.id,nama:s.nama,kelas:s.kelas,event:document.getElementById('achEvent').value,level:document.getElementById('achLevel').value,rank,points:pointMap[rank]||5,teacher:document.getElementById('achTeacher').value};
+  state.achievements.unshift(data);save();postOnline('saveAchievement',data);e.target.reset();fillStudentList('ach');renderAll();alert('Prestasi berhasil disimpan.');
+}
+function pointForm(){
+  let type=prompt('Jenis: Pelanggaran atau Prestasi','Pelanggaran');if(!type)return;
+  type=/prestasi/i.test(type)?'Prestasi':'Pelanggaran';
+  let name=prompt('Nama kategori');if(!name)return;
+  let value=Number(prompt('Nilai poin',type==='Pelanggaran'?'-10':'10'));if(Number.isNaN(value))return;
+  value=type==='Pelanggaran'?-Math.abs(value):Math.abs(value);
+  let obj={id:'X'+Date.now(),type,name,value};state.points.push(obj);save();postOnline('savePoint',obj);renderAll();
+}
+function editPoint(id){
+  let p=state.points.find(x=>x.id===id);if(!p)return;
+  let name=prompt('Nama kategori',p.name);if(!name)return;
+  let v=Number(prompt('Nilai',p.value));if(Number.isNaN(v))return;
+  p.name=name;p.value=p.type==='Pelanggaran'?-Math.abs(v):Math.abs(v);save();postOnline('savePoint',p);renderAll();
+}
+function renderMutations(){
+  const f=document.getElementById('mutationFilter')?.value||'';
+  let a=state.mutations.filter(x=>!f||x.category===f).sort((a,b)=>b.date.localeCompare(a.date));
+  document.getElementById('mutationList').innerHTML=a.map(x=>`<div class="border-b py-3"><b>${esc(x.category)}</b> — ${esc(x.name)}<br><span class="text-gray-500">${new Date(x.date).toLocaleString('id-ID')} ${x.detail?'| '+esc(x.detail):''}</span></div>`).join('')||'Belum ada data mutasi.';
+}
+function renderDonut(cats){
+  const el=document.getElementById('pelanggaranDonut');if(!el)return;
+  const a=Object.entries(cats).sort((x,y)=>y[1]-x[1]), total=a.reduce((s,x)=>s+x[1],0);
+  if(!total){el.innerHTML='<div class="h-full flex items-center justify-center text-gray-400">Belum ada data</div>';return;}
+  const r=42,c=2*Math.PI*r;let offset=0;
+  const circles=a.map((x,i)=>{let len=x[1]/total*c, dash=`${len} ${c-len}`, rot=offset/c*360-90;offset+=len;return `<circle cx="60" cy="60" r="${r}" fill="none" stroke-width="18" stroke-dasharray="${dash}" stroke-dashoffset="0" transform="rotate(${rot} 60 60)" style="stroke:hsl(${(i*67)%360},65%,48%)"/>`;}).join('');
+  el.innerHTML=`<svg viewBox="0 0 120 120" class="w-full h-full"><circle cx="60" cy="60" r="${r}" fill="none" stroke="#e5e7eb" stroke-width="18"/>${circles}<text x="60" y="56" text-anchor="middle" font-size="20" font-weight="bold">${total}</text><text x="60" y="74" text-anchor="middle" font-size="10">kasus</text></svg>`;
+  document.getElementById('topKategori').innerHTML=a.map((x,i)=>`<div class="py-1"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:hsl(${(i*67)%360},65%,48%)"></span> ${esc(x[0])}: <b>${x[1]}</b> (${(x[1]/total*100).toFixed(1)}%)</div>`).join('');
+}
+function renderDashboard(){
+  let status=state.teachers.reduce((o,t)=>(o[t.status]=(o[t.status]||0)+1,o),{}),cert=state.teachers.filter(t=>t.certified===true||String(t.certified).toLowerCase()==='true').length;
+  let warn=state.students.filter(s=>totalPoints(s.id)<=-20&&totalPoints(s.id)>-50),calls=state.students.filter(s=>totalPoints(s.id)<=-50),cats={};
+  state.cases.forEach(x=>cats[x.type]=(cats[x.type]||0)+1);
+  let cards=[['Total Pegawai',state.teachers.length],['Total Guru',state.teachers.filter(t=>/guru/i.test(t.tugas||'')).length],['PNS',status.PNS||0],['PPPK',status.PPPK||0],['PPPK Paruh Waktu',status['PPPK Paruh Waktu']||0],['Honorer',status.Honorer||0],['Guru Bersertifikasi',cert],['Guru Non Sertifikasi',Math.max(0,state.teachers.length-cert)],['Total Kasus',state.cases.length],['Siswa Peringatan',warn.length],['Surat Panggilan',calls.length],['Total Siswa',state.students.length]];
+  dashCards.innerHTML=cards.map(c=>`<div class="bg-white rounded-xl shadow p-4"><div class="text-xs text-gray-500">${c[0]}</div><div class="text-2xl font-bold text-green-700">${c[1]}</div></div>`).join('');
+  renderDonut(cats);ringkasan.innerHTML=`${state.students.length} siswa aktif<br>${state.alumni.length} alumni<br>${state.teachers.length} pegawai/guru`;
+  peringatanList.innerHTML=warn.sort((a,b)=>totalPoints(a.id)-totalPoints(b.id)).slice(0,20).map(s=>`<div class="py-1 border-b">${esc(s.nama)} <span class="text-gray-500">(${esc(s.kelas)})</span> <b>${totalPoints(s.id)}</b></div>`).join('')||'Belum ada.';
+  prestasiList.innerHTML=state.achievements.slice(0,10).map(a=>`<div class="py-1 border-b">${esc(a.nama)} — ${esc(a.rank)} <span class="text-gray-500">${esc(a.event)}</span></div>`).join('')||'Belum ada.';
+}
+function printCall(id){
+  const s=state.students.find(x=>x.id===id),p=totalPoints(id);if(!s)return;
+  const cases=state.cases.filter(x=>x.studentId===id).slice(0,10).map(x=>`<li>${new Date(x.date).toLocaleDateString('id-ID')} — ${esc(x.type)} (${x.points} poin): ${esc(x.problem||'')}</li>`).join('')||'<li>-</li>';
+  const w=window.open('','_blank','width=850,height=700');
+  w.document.write(`<!doctype html><html><head><title>Surat Panggilan</title><style>body{font-family:Arial,sans-serif;margin:45px;color:#111;line-height:1.5}.head{text-align:center}.line{border-bottom:2px solid #000;margin:12px 0 25px}table{width:100%;border-collapse:collapse}td{padding:5px;vertical-align:top}.sign{margin-top:60px;display:flex;justify-content:space-between;text-align:center}.sign div{width:30%}@media print{body{margin:25px}}</style></head><body><div class="head"><b>MIN 4 LAMPUNG TIMUR</b><br><b>SURAT PANGGILAN ORANG TUA / WALI SISWA</b></div><div class="line"></div><p>Nomor: ....................................</p><p>Yth. Bapak/Ibu Orang Tua/Wali dari:</p><table><tr><td width="180">Nama Siswa</td><td>: <b>${esc(s.nama)}</b></td></tr><tr><td>Kelas</td><td>: ${esc(s.kelas)}</td></tr><tr><td>Wali Kelas</td><td>: ${esc(s.waliKelas||'-')}</td></tr><tr><td>Total Poin</td><td>: ${p}</td></tr></table><p>Dengan hormat, sehubungan dengan catatan perilaku siswa tersebut, kami mengharapkan kehadiran Bapak/Ibu Orang Tua/Wali untuk berkoordinasi mengenai pembinaan siswa.</p><p><b>Ringkasan catatan pelanggaran:</b></p><ul>${cases}</ul><p>Hari/Tanggal: ............................................................<br>Waktu: ....................................................................<br>Tempat: MIN 4 Lampung Timur</p><p>Demikian surat panggilan ini disampaikan. Atas perhatian dan kerja samanya kami ucapkan terima kasih.</p><div class="sign"><div>Orang Tua/Wali<br><br><br><br>(........................)</div><div>Wali Kelas<br><br><br><br>(........................)</div><div>Mengetahui<br>Kepala Madrasah<br><br><br>(........................)</div></div><script>window.onload=()=>window.print()<\/script></body></html>`);
+  w.document.close();
+}
+function clearAlumni(){if(confirm('Hapus seluruh data alumni?')){state.alumni=[];save();renderAll();}}
+function clearHistoryData(){if(confirm('Hapus seluruh riwayat kasus dan prestasi?')){state.cases=[];state.achievements=[];save();renderAll();}}
+function clearMutations(){if(confirm('Hapus seluruh data mutasi?')){state.mutations=[];save();renderAll();}}
+function promoteClass6(){let move=state.students.filter(s=>/(^|\\D)6(\\D|$)/.test(String(s.kelas)));if(!move.length)return alert('Tidak ada siswa kelas 6.');if(confirm(`Pindahkan ${move.length} siswa kelas 6 ke alumni?`)){move.forEach(s=>logMutation('Siswa Dikeluarkan',s.nama,'Lulus dan dipindahkan ke alumni'));state.alumni.push(...move.map(s=>({...s,lulusAt:new Date().toISOString()})));state.students=state.students.filter(s=>!move.some(m=>m.id===s.id));save();renderAll();}}
+function renderAll(){
+  initForms();renderDashboard();renderStudents();renderTeachers();renderReport();renderHistory();renderPoints();renderMutations();
+  alumniTable.innerHTML=state.alumni.map(s=>`<div class="border-b py-2">${esc(s.nama)} — ${esc(s.kelas)} — Lulus ${s.lulusAt?new Date(s.lulusAt).getFullYear():''}</div>`).join('')||'Belum ada alumni.';
+}
+
+</script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 <style>
 html,body{margin:0;height:100%;font-family:Arial,sans-serif}
@@ -27,6 +133,7 @@ html,body{margin:0;height:100%;font-family:Arial,sans-serif}
 <button class="nav w-full text-left p-3 rounded flex gap-3 items-center" data-page="guru"><i class="fa-solid fa-chalkboard-user w-5"></i><span>Guru</span></button>
 <button class="nav w-full text-left p-3 rounded flex gap-3 items-center" data-page="riwayat"><i class="fa-solid fa-clock-rotate-left w-5"></i><span>Riwayat</span></button>
 <button class="nav w-full text-left p-3 rounded flex gap-3 items-center" data-page="point"><i class="fa-solid fa-sliders w-5"></i><span>Setting Point</span></button>
+<button class="nav w-full text-left p-3 rounded flex gap-3 items-center" data-page="mutasi"><i class="fa-solid fa-right-left w-5"></i><span>Mutasi</span></button>
 <button class="nav w-full text-left p-3 rounded flex gap-3 items-center" data-page="backup"><i class="fa-solid fa-hard-drive w-5"></i><span>Backup</span></button>
 </nav>
 <div class="p-3 text-center text-xs text-green-200">Data transaksi tersimpan di perangkat sampai backend transaksi ditambahkan.</div>
@@ -38,7 +145,10 @@ html,body{margin:0;height:100%;font-family:Arial,sans-serif}
 <section id="page-dashboard" class="page active">
 <div id="dashCards" class="grid grid-cols-2 md:grid-cols-4 gap-4"></div>
 <div class="grid md:grid-cols-2 gap-6 mt-6">
-<div class="bg-white rounded-xl p-5 shadow"><h3 class="font-bold">Kategori Pelanggaran Terbanyak</h3><div id="topKategori" class="mt-3 text-gray-600"></div></div>
+<div class="bg-white rounded-xl p-5 shadow"><h3 class="font-bold">Kategori Pelanggaran Terbanyak</h3><div class="flex flex-col md:flex-row items-center gap-4 mt-3">
+<div id="pelanggaranDonut" class="w-48 h-48"></div>
+<div id="topKategori" class="text-sm text-gray-600 flex-1"></div>
+</div></div>
 <div class="bg-white rounded-xl p-5 shadow"><h3 class="font-bold">Ringkasan Database</h3><div id="ringkasan" class="mt-3 text-gray-600"></div></div>
 <div class="bg-white rounded-xl p-5 shadow"><h3 class="font-bold">20 Siswa Terbaru Masuk Peringatan</h3><div id="peringatanList" class="mt-3 text-sm"></div></div>
 <div class="bg-white rounded-xl p-5 shadow"><h3 class="font-bold">10 Prestasi Terbaru</h3><div id="prestasiList" class="mt-3 text-sm"></div></div>
@@ -97,10 +207,16 @@ html,body{margin:0;height:100%;font-family:Arial,sans-serif}
 
 <section id="page-point" class="page"><div class="bg-white p-5 rounded-xl shadow"><div class="flex gap-2 mb-4"><button class="bg-green-700 text-white px-3 py-2 rounded" onclick="pointForm()">+ Tambah Kategori</button></div><div class="overflow-auto"><table class="w-full text-sm"><thead><tr class="bg-gray-100"><th>Jenis</th><th>Nama</th><th>Nilai</th><th>Aksi</th></tr></thead><tbody id="pointTable"></tbody></table></div><p class="text-xs text-gray-500 mt-3">Pelanggaran bernilai negatif, prestasi bernilai positif.</p></div></section>
 
+<section id="page-mutasi" class="page"><div class="bg-white p-5 rounded-xl shadow">
+<div class="flex flex-wrap gap-3 mb-4"><select id="mutationFilter" onchange="renderMutations()" class="border p-2 rounded"><option value="">Semua Kategori</option><option value="Siswa Ditambahkan">Siswa Ditambahkan</option><option value="Siswa Dikeluarkan">Siswa Dikeluarkan</option><option value="Guru Ditambahkan">Guru Ditambahkan</option><option value="Guru Dikeluarkan">Guru Dikeluarkan</option><option value="Siswa Diedit">Siswa Diedit</option><option value="Guru Diedit">Guru Diedit</option></select></div>
+<div id="mutationList" class="text-sm"></div></div></section>
 <section id="page-backup" class="page"><div class="grid md:grid-cols-3 gap-4">
 <div class="bg-white p-5 rounded-xl shadow"><h3 class="font-bold">Backup</h3><p class="text-sm text-gray-500 my-3">Unduh seluruh transaksi dan master lokal.</p><button onclick="backupData()" class="bg-blue-700 text-white px-3 py-2 rounded">Download Backup JSON</button></div>
 <div class="bg-white p-5 rounded-xl shadow"><h3 class="font-bold">Restore</h3><p class="text-sm text-gray-500 my-3">Pulihkan data dari file backup.</p><input type="file" accept=".json" onchange="restoreData(this.files[0])"></div>
 <div class="bg-white p-5 rounded-xl shadow"><h3 class="font-bold text-red-700">Hapus Transaksi</h3><p class="text-sm text-gray-500 my-3">Menghapus kasus dan prestasi lokal.</p><button onclick="clearTransactions()" class="bg-red-700 text-white px-3 py-2 rounded">Hapus Transaksi</button></div>
+<div class="bg-white p-5 rounded-xl shadow"><h3 class="font-bold text-red-700">Hapus Alumni</h3><p class="text-sm text-gray-500 my-3">Menghapus daftar alumni.</p><button onclick="clearAlumni()" class="bg-red-700 text-white px-3 py-2 rounded">Hapus Alumni</button></div>
+<div class="bg-white p-5 rounded-xl shadow"><h3 class="font-bold text-red-700">Hapus Riwayat</h3><p class="text-sm text-gray-500 my-3">Menghapus riwayat kasus dan prestasi.</p><button onclick="clearHistoryData()" class="bg-red-700 text-white px-3 py-2 rounded">Hapus Riwayat</button></div>
+<div class="bg-white p-5 rounded-xl shadow"><h3 class="font-bold text-red-700">Hapus Mutasi</h3><p class="text-sm text-gray-500 my-3">Menghapus seluruh catatan mutasi.</p><button onclick="clearMutations()" class="bg-red-700 text-white px-3 py-2 rounded">Hapus Mutasi</button></div>
 </div></section>
 </div></main></div>
 
@@ -108,7 +224,7 @@ html,body{margin:0;height:100%;font-family:Arial,sans-serif}
 const API_URL='https://script.google.com/macros/s/AKfycbwXKJSUpb4BEyieBeS2aB5pH91f_apM2jkZdIHOiJKFDUcNuI7O2oyV4nPncyYVSdgM/exec';
 const KEY='simak_v3_data';
 let state=JSON.parse(localStorage.getItem(KEY)||'{}');
-state.students=state.students||[]; state.teachers=state.teachers||[]; state.cases=state.cases||[]; state.achievements=state.achievements||[]; state.alumni=state.alumni||[];
+state.students=state.students||[]; state.teachers=state.teachers||[]; state.cases=state.cases||[]; state.achievements=state.achievements||[]; state.alumni=state.alumni||[]; state.mutations=state.mutations||[];
 state.points=state.points||[
 {id:'P1',type:'Pelanggaran',name:'Terlambat',value:-10},{id:'P2',type:'Pelanggaran',name:'Atribut tidak lengkap',value:-10},{id:'P3',type:'Pelanggaran',name:'Bolos',value:-20},{id:'P4',type:'Pelanggaran',name:'Bullying',value:-50},
 {id:'A1',type:'Prestasi',name:'Juara 1',value:30},{id:'A2',type:'Prestasi',name:'Juara 2',value:20},{id:'A3',type:'Prestasi',name:'Juara 3',value:15}];
@@ -136,6 +252,7 @@ try{
     state.achievements=d.prestasi||state.achievements;
     if((d.point||[]).length) state.points=d.point;
     state.alumni=d.alumni||state.alumni;
+    state.mutations=d.mutations||state.mutations;
     save();
   }
 }catch(e){console.warn('Database online gagal dimuat:',e)}
@@ -159,7 +276,7 @@ function delStudent(id){if(confirm('Hapus siswa?')){state.students=state.student
 function importStudents(f){let rd=new FileReader();rd.onload=()=>{let rows=rd.result.split(/\r?\n/).filter(Boolean).map(r=>r.split(',').map(x=>x.trim()));let h=rows.shift().map(x=>x.toLowerCase());rows.forEach(r=>{let o={};h.forEach((k,i)=>o[k]=r[i]||'');if(o.nama)state.students.push({id:'S'+Date.now()+Math.random(),nama:o.nama,nis:o.nis||'',nisn:o.nisn||'',kelas:o.kelas||'Kelas 1',waliKelas:o.walikelas||o['wali kelas']||''})});save();renderAll();alert('Import selesai')};rd.readAsText(f)}
 function promoteClass6(){let move=state.students.filter(s=>String(s.kelas).includes('6'));if(!move.length)return alert('Tidak ada siswa kelas 6.');if(confirm(`Pindahkan ${move.length} siswa kelas 6 ke alumni?`)){state.alumni.push(...move.map(s=>({...s,lulusAt:new Date().toISOString()})));state.students=state.students.filter(s=>!String(s.kelas).includes('6'));save();renderAll()}}
 function teacherForm(id){let t=state.teachers.find(x=>x.id===id)||{};let nama=prompt('Nama',t.nama||'');if(!nama)return;let status=prompt('Status: PNS / PPPK / PPPK Paruh Waktu / Honorer',t.status||'Honorer')||'Honorer';let tugas=prompt('Tugas',t.tugas||'Guru')||'Guru';let certified=confirm('Guru bersertifikasi? OK=Ya, Cancel=Tidak');if(id)Object.assign(t,{nama,status,tugas,certified});else state.teachers.push({id:'G'+Date.now(),nama,status,tugas,certified});
-let latest=state.teachers.find(x=>x.nama===nama);save();postOnline('saveTeacher',latest);renderAll()}
+let latest=state.teachers.find(x=>x.nama===nama);save();postOnline('upsertTeacher',latest);renderAll()}
 function renderTeachers(){teacherTable.innerHTML=state.teachers.map(t=>`<tr class="border-b"><td>${esc(t.nama)}</td><td>${esc(t.status)}</td><td>${esc(t.tugas)}</td><td><button onclick="teacherForm('${t.id}')">Edit</button> <button class="text-red-700" onclick="delTeacher('${t.id}')">Hapus</button></td></tr>`).join('');guruPageTable.innerHTML=state.teachers.map(t=>{let n=state.cases.filter(x=>x.teacher===t.nama).length+state.achievements.filter(x=>x.teacher===t.nama).length;return `<tr class="border-b"><td class="text-yellow-500">${teacherStars(n)}</td><td><button class="text-green-700 font-bold" onclick="teacherHistory('${esc(t.nama)}')">${esc(t.nama)}</button></td><td>${esc(t.status)}</td><td>${esc(t.tugas)}</td><td>${n} peran</td></tr>`}).join('')}
 function delTeacher(id){if(confirm('Hapus guru?')){state.teachers=state.teachers.filter(x=>x.id!==id);save();renderAll()}}
 function teacherHistory(n){let x=[...state.cases.filter(a=>a.teacher===n).map(a=>`${a.date.slice(0,10)} — Kasus: ${a.nama}`),...state.achievements.filter(a=>a.teacher===n).map(a=>`${a.date.slice(0,10)} — Prestasi: ${a.nama}`)];alert(n+'\n\n'+(x.join('\n')||'Belum ada riwayat.'))}
@@ -179,4 +296,110 @@ function clearTransactions(){if(confirm('Hapus seluruh kasus dan prestasi?')){st
 function renderAll(){initForms();renderDashboard();renderStudents();renderTeachers();renderReport();renderHistory();renderPoints();alumniTable.innerHTML=state.alumni.map(s=>`<div class="border-b py-2">${esc(s.nama)} — ${esc(s.kelas)} — Lulus ${s.lulusAt?new Date(s.lulusAt).getFullYear():''}</div>`).join('')||'Belum ada alumni.'}
 async function refreshAll(){await loadStudents();renderAll()}
 loadStudents().then(renderAll);
+
+/* ===== PERBAIKAN TOTAL V4 ===== */
+function logMutation(category,name,detail){
+  const m={id:'M'+Date.now()+Math.random(),date:new Date().toISOString(),category,name,detail:detail||''};
+  state.mutations.unshift(m); save(); postOnline('saveMutation',m); return m;
+}
+function showStudentTab(x){
+  document.getElementById('student-kasus').classList.toggle('hidden',x!=='kasus');
+  document.getElementById('student-prestasi').classList.toggle('hidden',x!=='prestasi');
+  document.querySelectorAll('#page-siswa .tab').forEach(b=>b.classList.toggle('active',b.textContent.toLowerCase().includes(x)));
+}
+function studentForm(id){
+  let s=state.students.find(x=>x.id===id)||{};
+  const lama=JSON.stringify(s);
+  let nama=prompt('Nama siswa',s.nama||''); if(!nama)return;
+  let nis=prompt('NIS',s.nis||''); if(nis===null)return;
+  let nisn=prompt('NISN',s.nisn||''); if(nisn===null)return;
+  let kelas=prompt('Kelas',s.kelas||''); if(kelas===null)return;
+  let wali=prompt('Wali kelas',s.waliKelas||''); if(wali===null)return;
+  let obj;
+  if(id){ Object.assign(s,{nama,nis,nisn,kelas,waliKelas:wali}); obj=s; logMutation('Siswa Diedit',nama,'Data siswa diperbarui'); }
+  else { obj={id:'S'+Date.now(),nama,nis,nisn,kelas,waliKelas:wali}; state.students.push(obj); logMutation('Siswa Ditambahkan',nama,'Ditambahkan melalui aplikasi'); }
+  save(); postOnline('upsertStudent',obj); renderAll();
+}
+function delStudent(id){
+  const s=state.students.find(x=>x.id===id); if(!s)return;
+  if(confirm('Hapus siswa '+s.nama+'?')){ state.students=state.students.filter(x=>x.id!==id); logMutation('Siswa Dikeluarkan',s.nama,'Dihapus dari database'); save(); postOnline('deleteStudent',{id,nama:s.nama}); renderAll(); }
+}
+function teacherForm(id){
+  let t=state.teachers.find(x=>x.id===id)||{};
+  let nama=prompt('Nama',t.nama||'');if(!nama)return;
+  let status=prompt('Status: PNS / PPPK / PPPK Paruh Waktu / Honorer',t.status||'Honorer');if(status===null)return;
+  let tugas=prompt('Tugas',t.tugas||'Guru');if(tugas===null)return;
+  let certified=confirm('Guru bersertifikasi? OK=Ya, Cancel=Tidak');
+  let obj;
+  if(id){Object.assign(t,{nama,status,tugas,certified});obj=t;logMutation('Guru Diedit',nama,'Data guru diperbarui');}
+  else {obj={id:'G'+Date.now(),nama,status,tugas,certified};state.teachers.push(obj);logMutation('Guru Ditambahkan',nama,'Ditambahkan melalui aplikasi');}
+  save(); postOnline('upsertTeacher',obj); renderAll();
+}
+function delTeacher(id){
+  const t=state.teachers.find(x=>x.id===id);if(!t)return;
+  if(confirm('Hapus guru '+t.nama+'?')){state.teachers=state.teachers.filter(x=>x.id!==id);logMutation('Guru Dikeluarkan',t.nama,'Dihapus dari database');save();postOnline('deleteTeacher',{id,nama:t.nama});renderAll();}
+}
+function saveAchievement(e){
+  e.preventDefault();
+  let s=getStudent(document.getElementById('achStudent').value,document.getElementById('achClass').value);
+  if(!s)return alert('Pilih nama siswa dari daftar yang sesuai dengan kelas.');
+  let rank=document.getElementById('achRank').value;
+  let pointMap={'Juara 1':30,'Juara 2':20,'Juara 3':15,'Harapan':10,'Peserta Berprestasi':5};
+  let data={id:'A'+Date.now(),date:new Date().toISOString(),studentId:s.id,nama:s.nama,kelas:s.kelas,event:document.getElementById('achEvent').value,level:document.getElementById('achLevel').value,rank,points:pointMap[rank]||5,teacher:document.getElementById('achTeacher').value};
+  state.achievements.unshift(data);save();postOnline('saveAchievement',data);e.target.reset();fillStudentList('ach');renderAll();alert('Prestasi berhasil disimpan.');
+}
+function pointForm(){
+  let type=prompt('Jenis: Pelanggaran atau Prestasi','Pelanggaran');if(!type)return;
+  type=/prestasi/i.test(type)?'Prestasi':'Pelanggaran';
+  let name=prompt('Nama kategori');if(!name)return;
+  let value=Number(prompt('Nilai poin',type==='Pelanggaran'?'-10':'10'));if(Number.isNaN(value))return;
+  value=type==='Pelanggaran'?-Math.abs(value):Math.abs(value);
+  let obj={id:'X'+Date.now(),type,name,value};state.points.push(obj);save();postOnline('savePoint',obj);renderAll();
+}
+function editPoint(id){
+  let p=state.points.find(x=>x.id===id);if(!p)return;
+  let name=prompt('Nama kategori',p.name);if(!name)return;
+  let v=Number(prompt('Nilai',p.value));if(Number.isNaN(v))return;
+  p.name=name;p.value=p.type==='Pelanggaran'?-Math.abs(v):Math.abs(v);save();postOnline('savePoint',p);renderAll();
+}
+function renderMutations(){
+  const f=document.getElementById('mutationFilter')?.value||'';
+  let a=state.mutations.filter(x=>!f||x.category===f).sort((a,b)=>b.date.localeCompare(a.date));
+  document.getElementById('mutationList').innerHTML=a.map(x=>`<div class="border-b py-3"><b>${esc(x.category)}</b> — ${esc(x.name)}<br><span class="text-gray-500">${new Date(x.date).toLocaleString('id-ID')} ${x.detail?'| '+esc(x.detail):''}</span></div>`).join('')||'Belum ada data mutasi.';
+}
+function renderDonut(cats){
+  const el=document.getElementById('pelanggaranDonut');if(!el)return;
+  const a=Object.entries(cats).sort((x,y)=>y[1]-x[1]), total=a.reduce((s,x)=>s+x[1],0);
+  if(!total){el.innerHTML='<div class="h-full flex items-center justify-center text-gray-400">Belum ada data</div>';return;}
+  const r=42,c=2*Math.PI*r;let offset=0;
+  const circles=a.map((x,i)=>{let len=x[1]/total*c, dash=`${len} ${c-len}`, rot=offset/c*360-90;offset+=len;return `<circle cx="60" cy="60" r="${r}" fill="none" stroke-width="18" stroke-dasharray="${dash}" stroke-dashoffset="0" transform="rotate(${rot} 60 60)" style="stroke:hsl(${(i*67)%360},65%,48%)"/>`;}).join('');
+  el.innerHTML=`<svg viewBox="0 0 120 120" class="w-full h-full"><circle cx="60" cy="60" r="${r}" fill="none" stroke="#e5e7eb" stroke-width="18"/>${circles}<text x="60" y="56" text-anchor="middle" font-size="20" font-weight="bold">${total}</text><text x="60" y="74" text-anchor="middle" font-size="10">kasus</text></svg>`;
+  document.getElementById('topKategori').innerHTML=a.map((x,i)=>`<div class="py-1"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:hsl(${(i*67)%360},65%,48%)"></span> ${esc(x[0])}: <b>${x[1]}</b> (${(x[1]/total*100).toFixed(1)}%)</div>`).join('');
+}
+function renderDashboard(){
+  let status=state.teachers.reduce((o,t)=>(o[t.status]=(o[t.status]||0)+1,o),{}),cert=state.teachers.filter(t=>t.certified===true||String(t.certified).toLowerCase()==='true').length;
+  let warn=state.students.filter(s=>totalPoints(s.id)<=-20&&totalPoints(s.id)>-50),calls=state.students.filter(s=>totalPoints(s.id)<=-50),cats={};
+  state.cases.forEach(x=>cats[x.type]=(cats[x.type]||0)+1);
+  let cards=[['Total Pegawai',state.teachers.length],['Total Guru',state.teachers.filter(t=>/guru/i.test(t.tugas||'')).length],['PNS',status.PNS||0],['PPPK',status.PPPK||0],['PPPK Paruh Waktu',status['PPPK Paruh Waktu']||0],['Honorer',status.Honorer||0],['Guru Bersertifikasi',cert],['Guru Non Sertifikasi',Math.max(0,state.teachers.length-cert)],['Total Kasus',state.cases.length],['Siswa Peringatan',warn.length],['Surat Panggilan',calls.length],['Total Siswa',state.students.length]];
+  dashCards.innerHTML=cards.map(c=>`<div class="bg-white rounded-xl shadow p-4"><div class="text-xs text-gray-500">${c[0]}</div><div class="text-2xl font-bold text-green-700">${c[1]}</div></div>`).join('');
+  renderDonut(cats);ringkasan.innerHTML=`${state.students.length} siswa aktif<br>${state.alumni.length} alumni<br>${state.teachers.length} pegawai/guru`;
+  peringatanList.innerHTML=warn.sort((a,b)=>totalPoints(a.id)-totalPoints(b.id)).slice(0,20).map(s=>`<div class="py-1 border-b">${esc(s.nama)} <span class="text-gray-500">(${esc(s.kelas)})</span> <b>${totalPoints(s.id)}</b></div>`).join('')||'Belum ada.';
+  prestasiList.innerHTML=state.achievements.slice(0,10).map(a=>`<div class="py-1 border-b">${esc(a.nama)} — ${esc(a.rank)} <span class="text-gray-500">${esc(a.event)}</span></div>`).join('')||'Belum ada.';
+}
+function printCall(id){
+  const s=state.students.find(x=>x.id===id),p=totalPoints(id);if(!s)return;
+  const cases=state.cases.filter(x=>x.studentId===id).slice(0,10).map(x=>`<li>${new Date(x.date).toLocaleDateString('id-ID')} — ${esc(x.type)} (${x.points} poin): ${esc(x.problem||'')}</li>`).join('')||'<li>-</li>';
+  const w=window.open('','_blank','width=850,height=700');
+  w.document.write(`<!doctype html><html><head><title>Surat Panggilan</title><style>body{font-family:Arial,sans-serif;margin:45px;color:#111;line-height:1.5}.head{text-align:center}.line{border-bottom:2px solid #000;margin:12px 0 25px}table{width:100%;border-collapse:collapse}td{padding:5px;vertical-align:top}.sign{margin-top:60px;display:flex;justify-content:space-between;text-align:center}.sign div{width:30%}@media print{body{margin:25px}}</style></head><body><div class="head"><b>MIN 4 LAMPUNG TIMUR</b><br><b>SURAT PANGGILAN ORANG TUA / WALI SISWA</b></div><div class="line"></div><p>Nomor: ....................................</p><p>Yth. Bapak/Ibu Orang Tua/Wali dari:</p><table><tr><td width="180">Nama Siswa</td><td>: <b>${esc(s.nama)}</b></td></tr><tr><td>Kelas</td><td>: ${esc(s.kelas)}</td></tr><tr><td>Wali Kelas</td><td>: ${esc(s.waliKelas||'-')}</td></tr><tr><td>Total Poin</td><td>: ${p}</td></tr></table><p>Dengan hormat, sehubungan dengan catatan perilaku siswa tersebut, kami mengharapkan kehadiran Bapak/Ibu Orang Tua/Wali untuk berkoordinasi mengenai pembinaan siswa.</p><p><b>Ringkasan catatan pelanggaran:</b></p><ul>${cases}</ul><p>Hari/Tanggal: ............................................................<br>Waktu: ....................................................................<br>Tempat: MIN 4 Lampung Timur</p><p>Demikian surat panggilan ini disampaikan. Atas perhatian dan kerja samanya kami ucapkan terima kasih.</p><div class="sign"><div>Orang Tua/Wali<br><br><br><br>(........................)</div><div>Wali Kelas<br><br><br><br>(........................)</div><div>Mengetahui<br>Kepala Madrasah<br><br><br>(........................)</div></div><script>window.onload=()=>window.print()<\/script></body></html>`);
+  w.document.close();
+}
+function clearAlumni(){if(confirm('Hapus seluruh data alumni?')){state.alumni=[];save();renderAll();}}
+function clearHistoryData(){if(confirm('Hapus seluruh riwayat kasus dan prestasi?')){state.cases=[];state.achievements=[];save();renderAll();}}
+function clearMutations(){if(confirm('Hapus seluruh data mutasi?')){state.mutations=[];save();renderAll();}}
+function promoteClass6(){let move=state.students.filter(s=>/(^|\\D)6(\\D|$)/.test(String(s.kelas)));if(!move.length)return alert('Tidak ada siswa kelas 6.');if(confirm(`Pindahkan ${move.length} siswa kelas 6 ke alumni?`)){move.forEach(s=>logMutation('Siswa Dikeluarkan',s.nama,'Lulus dan dipindahkan ke alumni'));state.alumni.push(...move.map(s=>({...s,lulusAt:new Date().toISOString()})));state.students=state.students.filter(s=>!move.some(m=>m.id===s.id));save();renderAll();}}
+function renderAll(){
+  initForms();renderDashboard();renderStudents();renderTeachers();renderReport();renderHistory();renderPoints();renderMutations();
+  alumniTable.innerHTML=state.alumni.map(s=>`<div class="border-b py-2">${esc(s.nama)} — ${esc(s.kelas)} — Lulus ${s.lulusAt?new Date(s.lulusAt).getFullYear():''}</div>`).join('')||'Belum ada alumni.';
+}
+
 </script></body></html>
